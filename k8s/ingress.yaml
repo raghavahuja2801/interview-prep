@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: interview-prep
+  namespace: interview-prep
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+
+  tls:
+    - hosts:
+        - interview.lab
+
+  rules:
+    - host: interview.lab
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: interview-prep-frontend
+                port:
+                  number: 80

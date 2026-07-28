@@ -1,0 +1,17 @@
+{
+  "name": "interview-prep-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node seed/seed.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^4.21.0",
+    "mongoose": "^8.7.0",
+    "openai": "^7.0.0"
+  }
+}

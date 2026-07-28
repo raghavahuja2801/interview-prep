@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: interview-prep-api
+  namespace: interview-prep
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: interview-prep-api
+  template:
+    metadata:
+      labels:
+        app: interview-prep-api
+    spec:
+      containers:
+        - name: api
+          image: interview-prep-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4000
+          env:
+            - name: MONGO_URI
+              value: "mongodb://admin:Raghav3214!@mongodb.mongodb.svc.cluster.local:27017/interview-prep?authSource=admin"
+            - name: DEEPSEEK_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: deepseek-key
+                  key: api-key
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
