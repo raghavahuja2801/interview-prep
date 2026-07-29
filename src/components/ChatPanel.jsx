@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { Send, MessageSquare, RotateCcw, StopCircle } from 'lucide-react'
+import InterviewTimer from './InterviewTimer.jsx'
 import { marked } from 'marked'
 import ChatMessage from './ChatMessage.jsx'
 import { sendChatMessage } from '../api/chat.js'
-import { fetchConversation } from '../api/conversations.js'
+import { sendDiagramChatMessage } from '../api/diagram.js'
+import { createConversation, fetchConversation, updateConversation } from '../api/conversations.js'
 
 marked.setOptions({ breaks: true, gfm: true })
 
-export default function ChatPanel({ problem, initialConversationId, onConversationChange }) {
+export default function ChatPanel({ problem, initialConversationId, onConversationChange, onInterviewStateChange, externalMessage }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -16,6 +18,7 @@ export default function ChatPanel({ problem, initialConversationId, onConversati
   const [evaluation, setEvaluation] = useState(null)
   const [evaluating, setEvaluating] = useState(false)
   const [conversationId, setConversationId] = useState(initialConversationId || null)
+  const [conversationElapsed, setConversationElapsed] = useState(0)
   const scrollRef = useRef(null)
   const textareaRef = useRef(null)
 
@@ -28,20 +31,91 @@ export default function ChatPanel({ problem, initialConversationId, onConversati
         .then((conv) => {
           setMessages(conv.messages || [])
           setStarted(true)
+          setEnded(conv.completed || false)
+          setEvaluation(conv.evaluation || null)
+          setConversationElapsed(conv.durationSeconds || 0)
+          onInterviewStateChange?.(true)
         })
         .catch(() => {
-          // fall back to fresh start
           setMessages([])
           setStarted(false)
+          setEnded(false)
+          setEvaluation(null)
+          onInterviewStateChange?.(false)
         })
         .finally(() => setLoading(false))
     } else {
       setConversationId(null)
       setMessages([])
       setStarted(false)
+      setEnded(false)
+      setEvaluation(null)
+      onInterviewStateChange?.(false)
     }
     setInput('')
   }, [problem.id, initialConversationId])
+
+  // Handle external message from diagram tab
+  const processingRef = useRef(null)
+
+  useEffect(() => {
+    if (!externalMessage) return
+
+    const { source, description, ts } = externalMessage
+    if (!source) return
+
+    // Guard against double-processing (React strict mode, rapid re-renders)
+    if (processingRef.current === ts) return
+    processingRef.current = ts
+
+    setStarted(true)
+    onInterviewStateChange?.(true)
+
+    const doSend = async () => {
+      setLoading(true)
+      try {
+        const data = await sendDiagramChatMessage({
+          problemId: problem.id,
+          conversationId,
+          message: description || '',
+          diagramSource: source,
+          diagramDescription: description || '',
+          event: conversationId ? 'message' : 'start',
+        })
+
+        if (data.conversationId) {
+          if (data.conversationId !== conversationId) {
+            setConversationId(data.conversationId)
+            onConversationChange?.(data.conversationId)
+          }
+          // Reload the full conversation from DB as source of truth
+          const conv = await fetchConversation(data.conversationId)
+          if (conv?.messages) {
+            setMessages(conv.messages)
+          }
+        } else {
+          // Fallback if no conversationId returned
+          const userMsg = { role: 'user', content: description || 'Attached a diagram' }
+          if (data.diagram) {
+            userMsg.diagram = {
+              inlineDataUrl: data.diagram.inlineDataUrl || null,
+              imageKey: data.diagram.imageKey || null,
+            }
+          }
+          setMessages((prev) => [...prev, userMsg, { role: 'assistant', content: data.reply }])
+        }
+      } catch (err) {
+        setMessages((prev) => [
+          ...prev,
+          { role: 'user', content: description || 'Attached a diagram' },
+          { role: 'assistant', content: err.message || 'Something went wrong.', isError: true },
+        ])
+      } finally {
+        setLoading(false)
+      }
+    }
+    doSend()
+  }, [externalMessage])
 
   const evaluationHtml = useMemo(() => {
     if (!evaluation) return ''
@@ -65,7 +139,14 @@ export default function ChatPanel({ problem, initialConversationId, onConversati
         history: historyForCall,
         event,
       })
-      setMessages((prev) => [...prev, { role: 'assistant', content: data.reply }])
+      const aiMsg = { role: 'assistant', content: data.reply }
+      if (data.diagram) {
+        aiMsg.diagram = {
+          inlineDataUrl: data.diagram.inlineDataUrl || null,
+          imageKey: data.diagram.imageKey || null,
+        }
+      }
+      setMessages((prev) => [...prev, aiMsg])
       if (data.conversationId && data.conversationId !== conversationId) {
         setConversationId(data.conversationId)
         onConversationChange?.(data.conversationId)
@@ -86,6 +167,7 @@ export default function ChatPanel({ problem, initialConversationId, onConversati
 
   function handleStart() {
     setStarted(true)
+    onInterviewStateChange?.(true)
     callBackend('', 'start', [])
   }
 
@@ -116,13 +198,21 @@ export default function ChatPanel({ problem, initialConversationId, onConversati
     }
   }
 
-  function handleRestart() {
+  async function handleRestart() {
+    // Save the current duration before discarding
+    if (conversationId && conversationElapsed > 0) {
+      try {
+        await updateConversation(conversationId, { durationSeconds: conversationElapsed })
+      } catch (_) { /* non-critical */ }
+    }
     setConversationId(null)
     setMessages([])
     setStarted(false)
     setEnded(false)
     setEvaluation(null)
+    setConversationElapsed(0)
     setInput('')
+    onInterviewStateChange?.(false)
     onConversationChange?.(null)
   }
 
@@ -130,6 +220,10 @@ export default function ChatPanel({ problem, initialConversationId, onConversati
     if (!conversationId || ended) return
     setEnded(true)
     setEvaluating(true)
+    // Save final duration before evaluating
+    try {
+      await updateConversation(conversationId, { durationSeconds: conversationElapsed })
+    } catch (_) { /* non-critical */ }
     try {
       const res = await fetch(`/api/evaluate`, {
         method: 'POST',
@@ -173,6 +267,16 @@ export default function ChatPanel({ problem, initialConversationId, onConversati
             <MessageSquare size={12} color="#fff" strokeWidth={2.5} />
           </div>
           <span style={{ fontSize: 13.5, fontWeight: 600 }}>AI Interviewer</span>
+          <InterviewTimer
+            running={started && !ended}
+            initialElapsed={conversationElapsed}
+            onElapsedChange={setConversationElapsed}
+            onPause={({ elapsed }) => {
+              if (conversationId) {
+                updateConversation(conversationId, { durationSeconds: elapsed }).catch(() => {})
+              }
+            }}
+          />
         </div>
         {started && !ended && (
           <div style={{ display: 'flex', gap: 6 }}>
@@ -278,7 +382,7 @@ export default function ChatPanel({ problem, initialConversationId, onConversati
         )}
 
         {messages.map((m, i) => (
-          <ChatMessage key={i} role={m.role} content={m.content} isError={m.isError} />
+          <ChatMessage key={i} role={m.role} content={m.content} isError={m.isError} diagram={m.diagram} />
         ))}
 
         {loading && (

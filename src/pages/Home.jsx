@@ -1,14 +1,20 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { fetchProblems } from '../api/problems.js'
 import ProblemCard from '../components/ProblemCard.jsx'
 
 const CATEGORIES = ['HLD', 'LLD']
 
 export default function Home() {
-  const [category, setCategory] = useState('HLD')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const category = searchParams.get('category') || 'HLD'
   const [difficulty, setDifficulty] = useState(null)
   const [problems, setProblems] = useState([])
   const [loading, setLoading] = useState(true)
+
+  function setCategory(cat) {
+    setSearchParams(cat === 'HLD' ? {} : { category: cat })
+  }
 
   useEffect(() => {
     let cancelled = false

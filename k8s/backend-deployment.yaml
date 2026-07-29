@@ -27,6 +27,19 @@ spec:
                 secretKeyRef:
                   name: deepseek-key
                   key: api-key
+            - name: PLANTUML_ENDPOINT
+              value: "http://plantuml.infrastructure.svc:80"
+            - name: MINIO_ENDPOINT
+              value: "minio.minio.svc:9000"
+            - name: MINIO_ACCESS_KEY
+              value: "admin"
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secret-key
+            - name: MINIO_BUCKET
+              value: "interview-prep"
           resources:
             requests:
               cpu: 100m
