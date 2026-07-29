@@ -56,17 +56,20 @@ router.get('/:id', async (req, res) => {
   }
 })
 
-// PATCH /api/conversations/:id — mark as completed, etc.
+// PATCH /api/conversations/:id — mark as completed, update duration, etc.
 router.patch('/:id', async (req, res) => {
   try {
     const updates = {}
     if (typeof req.body.completed === 'boolean') {
       updates.completed = req.body.completed
     }
+    if (typeof req.body.durationSeconds === 'number') {
+      updates.durationSeconds = req.body.durationSeconds
+    }
     const conversation = await Conversation.findByIdAndUpdate(
       req.params.id,
       { $set: updates },
-      { new: true, select: 'problemId completed startedAt lastActivityAt' }
+      { new: true, select: 'problemId completed durationSeconds startedAt lastActivityAt' }
     ).lean()
     if (!conversation) {
       return res.status(404).json({ error: 'Conversation not found' })

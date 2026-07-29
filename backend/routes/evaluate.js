@@ -28,6 +28,7 @@ router.post('/', async (req, res) => {
     const evaluation = await getEvaluation({
       problem,
       messages: conversation.messages || [],
+      durationSeconds: conversation.durationSeconds || 0,
     })
 
     // Extract score from the evaluation text (looks for "**X/10**" or "X/10")

@@ -498,9 +498,9 @@ function RightPanel({ problem, initialConversationId, onConversationChange }) {
         )}
       </div>
 
-      {/* Tab content */}
-      <div style={{ flex: 1, minHeight: 0 }}>
-        {activeTab === 'chat' ? (
+      {/* Tab content — keep both panels mounted to preserve timer state across tab switches */}
+      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        <div style={{ display: activeTab === 'chat' ? 'contents' : 'none' }}>
           <ChatPanel
             problem={problem}
             initialConversationId={chatConversationId}
@@ -508,14 +508,15 @@ function RightPanel({ problem, initialConversationId, onConversationChange }) {
             onInterviewStateChange={setInterviewStarted}
             externalMessage={diagramToSend}
           />
-        ) : (
+        </div>
+        <div style={{ display: activeTab === 'diagram' ? 'contents' : 'none', height: '100%' }}>
           <DiagramPanel
             problem={problem}
             conversationId={chatConversationId}
             onSendToChat={handleSendDiagramToChat}
             existingDiagrams={diagrams}
           />
-        )}
+        </div>
       </div>
     </div>
   )
