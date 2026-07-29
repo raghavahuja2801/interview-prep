@@ -124,7 +124,6 @@ export default function Home() {
                   fontWeight: 500,
                   letterSpacing: 0.2,
                   padding: '4px 12px',
-                  border: 'none',
                   borderRadius: 999,
                   background: difficulty === d
                     ? d === 'Easy' ? 'var(--easy-soft)' : d === 'Medium' ? 'var(--medium-soft)' : 'var(--hard-soft)'
