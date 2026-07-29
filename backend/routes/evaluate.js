@@ -2,6 +2,7 @@ import { Router } from 'express'
 import Problem from '../models/Problem.js'
 import Conversation from '../models/Conversation.js'
 import { getEvaluation } from '../services/evaluator.js'
+import { syncInterviewToNotion } from '../services/notion.js'
 
 const router = Router()
 
@@ -41,6 +42,12 @@ router.post('/', async (req, res) => {
         score,
         lastActivityAt: new Date(),
       },
+    })
+
+    // Sync to Notion (non-blocking — failures are logged, not returned)
+    syncInterviewToNotion({
+      problem,
+      conversation: { score, evaluation, problemId: problem.id },
     })
 
     res.json({ evaluation, score })
