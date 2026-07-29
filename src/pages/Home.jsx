@@ -147,37 +147,48 @@ export default function Home() {
           </div>
         </div>
 
-        {loading ? (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '80px 0',
-              gap: 6,
-            }}
-          >
-            <span className="typing-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-tertiary)', display: 'inline-block' }} />
-            <span className="typing-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-tertiary)', display: 'inline-block' }} />
-            <span className="typing-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-tertiary)', display: 'inline-block' }} />
-          </div>
-        ) : filtered.length === 0 ? (
-          <p style={{ fontSize: 14, color: 'var(--text-tertiary)', textAlign: 'center', padding: '60px 0' }}>
-            No problems match this filter.
-          </p>
-        ) : (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-              gap: 14,
-            }}
-          >
-            {filtered.map((p) => (
+        {/* grid wrapper — always rendered to prevent layout shift */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+            gap: 14,
+            minHeight: loading ? 220 : 'auto',
+          }}
+        >
+          {loading ? (
+            <div
+              style={{
+                gridColumn: '1 / -1',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '80px 0',
+                gap: 6,
+              }}
+            >
+              <span className="typing-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-tertiary)', display: 'inline-block' }} />
+              <span className="typing-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-tertiary)', display: 'inline-block' }} />
+              <span className="typing-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-tertiary)', display: 'inline-block' }} />
+            </div>
+          ) : filtered.length === 0 ? (
+            <p
+              style={{
+                gridColumn: '1 / -1',
+                fontSize: 14,
+                color: 'var(--text-tertiary)',
+                textAlign: 'center',
+                padding: '60px 0',
+              }}
+            >
+              No problems match this filter.
+            </p>
+          ) : (
+            filtered.map((p) => (
               <ProblemCard key={p.id} problem={p} />
-            ))}
-          </div>
-        )}
+            ))
+          )}
+        </div>
       </div>
     </div>
   )
