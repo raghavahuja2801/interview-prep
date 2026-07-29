@@ -10,14 +10,25 @@ async function seed() {
   await mongoose.connect(MONGO_URI)
   console.log('Connected to MongoDB')
 
-  await Problem.deleteMany({})
-  console.log('Cleared existing problems')
+  // Upsert each problem by its string `id` so existing problems are updated
+  // and new ones are inserted, but nothing is deleted.
+  let inserted = 0
+  let updated = 0
 
-  const docs = await Problem.insertMany(problems)
-  console.log(`Seeded ${docs.length} problems`)
+  for (const problem of problems) {
+    const result = await Problem.updateOne(
+      { id: problem.id },
+      { $set: problem },
+      { upsert: true }
+    )
+    if (result.upsertedCount > 0) inserted++
+    else if (result.modifiedCount > 0) updated++
+  }
+
+  const total = await Problem.countDocuments()
+  console.log(`Done — ${inserted} new, ${updated} updated, ${total} total in DB`)
 
   await mongoose.disconnect()
-  console.log('Done')
 }
 
 seed().catch((err) => {

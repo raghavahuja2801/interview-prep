@@ -6,6 +6,7 @@ const CATEGORIES = ['HLD', 'LLD']
 
 export default function Home() {
   const [category, setCategory] = useState('HLD')
+  const [difficulty, setDifficulty] = useState(null)
   const [problems, setProblems] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -26,6 +27,10 @@ export default function Home() {
       cancelled = true
     }
   }, [category])
+
+  const filtered = difficulty
+    ? problems.filter((p) => p.difficulty === difficulty)
+    : problems
 
   return (
     <div style={{ minHeight: '100%', background: 'var(--bg)' }}>
@@ -61,40 +66,80 @@ export default function Home() {
           interview.
         </p>
 
-        {/* category toggle */}
+        {/* category + difficulty filter row */}
         <div
           style={{
             display: 'flex',
-            gap: 4,
+            alignItems: 'center',
+            justifyContent: 'space-between',
             marginBottom: 28,
-            background: 'var(--bg-subtle)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-sm)',
-            padding: 3,
-            width: 'fit-content',
+            gap: 12,
+            flexWrap: 'wrap',
           }}
         >
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setCategory(cat)}
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 12.5,
-                fontWeight: 600,
-                letterSpacing: 0.3,
-                padding: '6px 16px',
-                border: 'none',
-                borderRadius: 5,
-                background: category === cat ? 'var(--bg)' : 'transparent',
-                color: category === cat ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                boxShadow: category === cat ? 'var(--shadow-sm)' : 'none',
-                transition: 'background 120ms ease, color 120ms ease',
-              }}
-            >
-              {cat === 'HLD' ? 'High-Level Design' : 'Low-Level Design'}
-            </button>
-          ))}
+          {/* category toggle */}
+          <div
+            style={{
+              display: 'flex',
+              gap: 4,
+              background: 'var(--bg-subtle)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)',
+              padding: 3,
+              width: 'fit-content',
+            }}
+          >
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => { setCategory(cat); setDifficulty(null) }}
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  letterSpacing: 0.3,
+                  padding: '6px 16px',
+                  border: 'none',
+                  borderRadius: 5,
+                  background: category === cat ? 'var(--bg)' : 'transparent',
+                  color: category === cat ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                  boxShadow: category === cat ? 'var(--shadow-sm)' : 'none',
+                  transition: 'background 120ms ease, color 120ms ease',
+                }}
+              >
+                {cat === 'HLD' ? 'High-Level Design' : 'Low-Level Design'}
+              </button>
+            ))}
+          </div>
+
+          {/* difficulty filter */}
+          <div style={{ display: 'flex', gap: 6 }}>
+            {['Easy', 'Medium', 'Hard'].map((d) => (
+              <button
+                key={d}
+                onClick={() => setDifficulty(d === difficulty ? null : d)}
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  letterSpacing: 0.2,
+                  padding: '4px 12px',
+                  border: 'none',
+                  borderRadius: 999,
+                  background: difficulty === d
+                    ? d === 'Easy' ? 'var(--easy-soft)' : d === 'Medium' ? 'var(--medium-soft)' : 'var(--hard-soft)'
+                    : 'var(--bg-subtle)',
+                  color: difficulty === d
+                    ? d === 'Easy' ? 'var(--easy)' : d === 'Medium' ? 'var(--medium)' : 'var(--hard)'
+                    : 'var(--text-tertiary)',
+                  border: `1px solid ${difficulty === d ? 'currentColor' : 'var(--border)'}`,
+                  transition: 'background 120ms ease, color 120ms ease',
+                }}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
         </div>
 
         {loading ? (
@@ -111,9 +156,9 @@ export default function Home() {
             <span className="typing-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-tertiary)', display: 'inline-block' }} />
             <span className="typing-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-tertiary)', display: 'inline-block' }} />
           </div>
-        ) : problems.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <p style={{ fontSize: 14, color: 'var(--text-tertiary)', textAlign: 'center', padding: '60px 0' }}>
-            No problems found for this category.
+            No problems match this filter.
           </p>
         ) : (
           <div
@@ -123,7 +168,7 @@ export default function Home() {
               gap: 14,
             }}
           >
-            {problems.map((p) => (
+            {filtered.map((p) => (
               <ProblemCard key={p.id} problem={p} />
             ))}
           </div>

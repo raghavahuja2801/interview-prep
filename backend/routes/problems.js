@@ -10,7 +10,15 @@ router.get('/', async (req, res) => {
     if (req.query.category) {
       filter.category = req.query.category
     }
-    const problems = await Problem.find(filter).sort({ difficulty: 1, id: 1 }).lean()
+    // Custom sort: Easy → Medium → Hard, then by id within each
+    const SORT_ORDER = { Easy: 1, Medium: 2, Hard: 3 }
+    const problems = await Problem.find(filter).lean()
+    problems.sort((a, b) => {
+      const da = SORT_ORDER[a.difficulty] || 99
+      const db = SORT_ORDER[b.difficulty] || 99
+      if (da !== db) return da - db
+      return a.id.localeCompare(b.id)
+    })
     res.json(problems)
   } catch (err) {
     console.error('Error fetching problems:', err)

@@ -25,3 +25,6 @@ npm-debug.log*
 
 # OS
 *.bak
+
+# Project-specific agent instructions (local only)
+AGENTS.md

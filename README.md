@@ -11,7 +11,7 @@ evaluations. Conversations are persisted in MongoDB.
 │  nginx FE    │────►│  Express BE  │────►│ MongoDB  │
 │  (React SPA) │     │  /api/*      │     │ (k3s)    │
 │              │     │  DeepSeek AI │     │          │
-│ interview.lab│     │              │     │ 16 probs │
+│  interview.lab│     │              │     │ 80 probs │
 └──────────────┘     └──────────────┘     └──────────┘
      ▲                      ▲
      │                      │
