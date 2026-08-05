@@ -5,8 +5,11 @@ import { getInterviewerReply } from '../services/interviewer.js'
 import { renderSvg, renderPng } from '../services/plantuml.js'
 import { storeDiagram } from '../services/minio.js'
 import crypto from 'crypto'
+import requireAuth from '../middleware/requireAuth.js'
 
 const router = Router()
+
+router.use(requireAuth)
 
 // POST /api/chat — send a message in an interview
 router.post('/', async (req, res) => {
@@ -27,6 +30,7 @@ router.post('/', async (req, res) => {
 
     if (event === 'start') {
       conversation = await Conversation.create({
+        ownerUserId: req.user.id,
         problemId,
         messages: [],
         diagrams: [],
@@ -34,7 +38,7 @@ router.post('/', async (req, res) => {
         lastActivityAt: new Date(),
       })
     } else if (conversationId) {
-      conversation = await Conversation.findById(conversationId)
+      conversation = await Conversation.findOne({ _id: conversationId, ownerUserId: req.user.id })
       if (!conversation) {
         return res.status(404).json({ error: 'Conversation not found' })
       }

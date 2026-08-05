@@ -12,6 +12,7 @@ const API_BASE = import.meta.env.VITE_API_URL || '/api'
 export async function sendChatMessage({ problemId, conversationId, message, history, event }) {
   const res = await fetch(`${API_BASE}/chat`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       event,

@@ -24,6 +24,7 @@ evaluations. Conversations are persisted in MongoDB.
 ### 1. Prerequisites
 
 - MongoDB running locally or port-forwarded: `kubectl port-forward -n mongodb svc/mongodb 27017:27017`
+- Postgres running locally or port-forwarded for auth/session storage: `kubectl port-forward -n postgres svc/postgres 5432:5432`
 - Node.js 22+
 - A [DeepSeek API key](https://platform.deepseek.com/api_keys)
 
@@ -32,6 +33,7 @@ evaluations. Conversations are persisted in MongoDB.
 ```bash
 cd backend
 cp .env.example .env      # edit MONGO_URI if needed
+# edit POSTGRES_URL if your local port-forward or credentials differ
 npm install
 npm run seed              # loads 16 problems into MongoDB
 ```
@@ -48,6 +50,16 @@ npm run dev                       # → localhost:5173 (proxies /api → 4000)
 ```
 
 Open `http://localhost:5173` in your browser.
+
+### Auth setup
+
+The backend now uses Postgres for authentication, sessions, and invite codes. For local development, port-forward Postgres before starting the API:
+
+```bash
+kubectl port-forward -n postgres svc/postgres 5432:5432
+```
+
+Then set `POSTGRES_URL` in `backend/.env` to match your local credentials and database name.
 
 ## Deploying to k3s
 

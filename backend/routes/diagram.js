@@ -4,8 +4,11 @@ import Conversation from '../models/Conversation.js'
 import Problem from '../models/Problem.js'
 import { renderSvg, renderPng } from '../services/plantuml.js'
 import { storeDiagram, getDiagram } from '../services/minio.js'
+import requireAuth from '../middleware/requireAuth.js'
 
 const router = Router()
+
+router.use(requireAuth)
 
 /**
  * POST /api/diagram/render
@@ -46,7 +49,7 @@ router.post('/render', async (req, res) => {
 
       // 3. Optionally link to conversation
       if (conversationId) {
-        const conversation = await Conversation.findById(conversationId)
+        const conversation = await Conversation.findOne({ _id: conversationId, ownerUserId: req.user.id })
         if (conversation) {
           conversation.diagrams.push({
             source,
