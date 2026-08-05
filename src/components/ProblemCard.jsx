@@ -60,8 +60,8 @@ export default function ProblemCard({ problem }) {
         </p>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto' }}>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 'auto', minWidth: 0 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', minWidth: 0, overflow: 'hidden' }}>
           {problem.tags.slice(0, 2).map((tag) => (
             <span
               key={tag}
@@ -79,7 +79,7 @@ export default function ProblemCard({ problem }) {
             </span>
           ))}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-tertiary)', fontSize: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-tertiary)', fontSize: 12, whiteSpace: 'nowrap', flexShrink: 0 }}>
           <Clock size={12} strokeWidth={2} />
           {problem.estimatedTime}
         </div>

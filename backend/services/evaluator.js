@@ -1,6 +1,6 @@
 const DEEPSEEK_BASE = 'https://api.deepseek.com/v1'
 
-function buildEvaluationPrompt(problem, messages) {
+function buildEvaluationPrompt(problem, messages, durationSeconds) {
   const category = problem.category === 'LLD' ? 'Low-Level Design' : 'High-Level Design'
 
   // Format the conversation transcript
@@ -11,7 +11,16 @@ function buildEvaluationPrompt(problem, messages) {
     })
     .join('\n\n')
 
-  return `You are a senior engineering manager evaluating a candidate's performance in a ${category} interview.
+  // Timing info
+  const estimated = problem.estimatedTime || '45 minutes'
+  const totalMinutes = Math.round(durationSeconds / 60)
+  const timeNote =
+    durationSeconds > 0
+      ? `\nThe interview took **${totalMinutes} minute(s)**. The estimated time for this problem is **${estimated}**.` +
+        '\nIf the candidate took significantly longer than estimated, note this in the evaluation (they may struggle with time pressure). If they finished much faster, consider whether they rushed through important details.'
+      : ''
+
+  return `You are a senior engineering manager evaluating a candidate's performance in a ${category} interview.${timeNote}
 
 ## Critical Scoring Rules
 
@@ -63,13 +72,13 @@ Actionable advice for the candidate to improve before their next interview.
 Be fair but rigorous. The evaluation should feel like real feedback from a senior engineer who conducted the interview.`
 }
 
-export async function getEvaluation({ problem, messages }) {
+export async function getEvaluation({ problem, messages, durationSeconds = 0 }) {
   const apiKey = process.env.DEEPSEEK_API_KEY
   if (!apiKey) {
     throw new Error('DEEPSEEK_API_KEY is not configured on the server')
   }
 
-  const systemPrompt = buildEvaluationPrompt(problem, messages)
+  const systemPrompt = buildEvaluationPrompt(problem, messages, durationSeconds)
 
   const res = await fetch(`${DEEPSEEK_BASE}/chat/completions`, {
     method: 'POST',

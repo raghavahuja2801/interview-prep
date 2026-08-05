@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, Gauge, History, Trash2, Play, BarChart3 } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Gauge, History, Trash2, Play, BarChart3, PenSquare, MessageSquare } from 'lucide-react'
 import { fetchProblemById } from '../api/problems.js'
 import { fetchConversations, deleteConversation, fetchConversation } from '../api/conversations.js'
 import DifficultyTag from '../components/DifficultyTag.jsx'
 import ChatPanel from '../components/ChatPanel.jsx'
+import DiagramPanel from '../components/DiagramPanel.jsx'
 import EvaluationDialog from '../components/EvaluationDialog.jsx'
 
 export default function Problem() {
@@ -33,6 +34,9 @@ export default function Problem() {
       cancelled = true
     }
   }, [id, navigate])
+
+  // Determine the category for back-navigation
+  const backPath = problem?.category === 'LLD' ? '/?category=LLD' : '/'
 
   // Load past conversations whenever problem or active conversation changes
   useEffect(() => {
@@ -123,7 +127,7 @@ export default function Problem() {
         }}
       >
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate(backPath)}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -379,9 +383,9 @@ export default function Problem() {
           )}
         </div>
 
-        {/* right: chat */}
+        {/* right: chat + diagram tabs */}
         <div style={{ flex: '1 1 45%', minWidth: 380, display: 'flex', flexDirection: 'column' }}>
-          <ChatPanel
+          <RightPanel
             problem={problem}
             initialConversationId={activeConversationId}
             onConversationChange={setActiveConversationId}
@@ -397,6 +401,123 @@ export default function Problem() {
           onClose={() => setEvalDialog(null)}
         />
       )}
+    </div>
+  )
+}
+
+function RightPanel({ problem, initialConversationId, onConversationChange }) {
+  const [activeTab, setActiveTab] = useState('chat')
+  const [chatConversationId, setChatConversationId] = useState(initialConversationId)
+  const [interviewStarted, setInterviewStarted] = useState(false)
+  const [diagrams, setDiagrams] = useState([])
+  const [diagramToSend, setDiagramToSend] = useState(null)
+
+  // Sync conversationId when parent changes
+  useEffect(() => {
+    setChatConversationId(initialConversationId)
+  }, [initialConversationId])
+
+  // Load diagrams when conversation changes
+  useEffect(() => {
+    if (chatConversationId) {
+      fetchConversation(chatConversationId)
+        .then((conv) => {
+          if (conv.diagrams) setDiagrams(conv.diagrams)
+        })
+        .catch(() => {})
+    } else {
+      setDiagrams([])
+    }
+  }, [chatConversationId])
+
+  function handleConversationChange(id) {
+    setChatConversationId(id)
+    onConversationChange(id)
+  }
+
+  function handleSendDiagramToChat({ source, description }) {
+    // Use timestamp as a unique key so React always detects a new value
+    setDiagramToSend({ source, description, ts: Date.now() })
+    setActiveTab('chat')
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Tab bar */}
+      <div
+        style={{
+          display: 'flex',
+          borderBottom: '1px solid var(--border)',
+          flexShrink: 0,
+          padding: '0 2px',
+        }}
+      >
+        <button
+          onClick={() => setActiveTab('chat')}
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            padding: '12px 0 10px',
+            background: 'none',
+            border: 'none',
+            borderBottom: activeTab === 'chat' ? '2px solid var(--accent)' : '2px solid transparent',
+            color: activeTab === 'chat' ? 'var(--accent)' : 'var(--text-secondary)',
+            fontSize: 13,
+            fontWeight: 600,
+            transition: 'color 120ms ease, border-color 120ms ease',
+          }}
+        >
+          <MessageSquare size={14} />
+          AI Interviewer
+        </button>
+        {interviewStarted && (
+          <button
+            onClick={() => setActiveTab('diagram')}
+            style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              padding: '12px 0 10px',
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === 'diagram' ? '2px solid var(--accent)' : '2px solid transparent',
+              color: activeTab === 'diagram' ? 'var(--accent)' : 'var(--text-secondary)',
+              fontSize: 13,
+              fontWeight: 600,
+              transition: 'color 120ms ease, border-color 120ms ease',
+            }}
+          >
+            <PenSquare size={14} />
+            Diagram
+          </button>
+        )}
+      </div>
+
+      {/* Tab content — keep both panels mounted to preserve timer state across tab switches */}
+      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        <div style={{ display: activeTab === 'chat' ? 'contents' : 'none' }}>
+          <ChatPanel
+            problem={problem}
+            initialConversationId={chatConversationId}
+            onConversationChange={handleConversationChange}
+            onInterviewStateChange={setInterviewStarted}
+            externalMessage={diagramToSend}
+          />
+        </div>
+        <div style={{ display: activeTab === 'diagram' ? 'contents' : 'none', height: '100%' }}>
+          <DiagramPanel
+            problem={problem}
+            conversationId={chatConversationId}
+            onSendToChat={handleSendDiagramToChat}
+            existingDiagrams={diagrams}
+          />
+        </div>
+      </div>
     </div>
   )
 }

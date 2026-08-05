@@ -138,6 +138,10 @@ input {
   color: var(--text-tertiary);
 }
 
+.diagram-textarea::placeholder {
+  color: var(--text-tertiary);
+}
+
 .problem-card:hover {
   border-color: var(--border-strong) !important;
   box-shadow: var(--shadow-md);

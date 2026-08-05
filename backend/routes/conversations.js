@@ -3,6 +3,27 @@ import Conversation from '../models/Conversation.js'
 
 const router = Router()
 
+// POST /api/conversations — create a new conversation
+router.post('/', async (req, res) => {
+  try {
+    const { problemId } = req.body
+    if (!problemId) {
+      return res.status(400).json({ error: 'problemId is required' })
+    }
+    const conversation = await Conversation.create({
+      problemId,
+      messages: [],
+      diagrams: [],
+      startedAt: new Date(),
+      lastActivityAt: new Date(),
+    })
+    res.status(201).json(conversation)
+  } catch (err) {
+    console.error('Error creating conversation:', err)
+    res.status(500).json({ error: 'Failed to create conversation' })
+  }
+})
+
 // GET /api/conversations?problemId=xxx — list past conversations (summary)
 router.get('/', async (req, res) => {
   try {
@@ -11,7 +32,7 @@ router.get('/', async (req, res) => {
       filter.problemId = req.query.problemId
     }
     const conversations = await Conversation.find(filter)
-      .select('problemId completed score startedAt lastActivityAt')
+      .select('problemId completed score startedAt lastActivityAt durationSeconds totalPausedSeconds')
       .sort({ lastActivityAt: -1 })
       .lean()
     res.json(conversations)
@@ -35,17 +56,20 @@ router.get('/:id', async (req, res) => {
   }
 })
 
-// PATCH /api/conversations/:id — mark as completed, etc.
+// PATCH /api/conversations/:id — mark as completed, update duration, etc.
 router.patch('/:id', async (req, res) => {
   try {
     const updates = {}
     if (typeof req.body.completed === 'boolean') {
       updates.completed = req.body.completed
     }
+    if (typeof req.body.durationSeconds === 'number') {
+      updates.durationSeconds = req.body.durationSeconds
+    }
     const conversation = await Conversation.findByIdAndUpdate(
       req.params.id,
       { $set: updates },
-      { new: true, select: 'problemId completed startedAt lastActivityAt' }
+      { new: true, select: 'problemId completed durationSeconds startedAt lastActivityAt' }
     ).lean()
     if (!conversation) {
       return res.status(404).json({ error: 'Conversation not found' })
