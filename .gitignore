@@ -28,3 +28,6 @@ npm-debug.log*
 
 # Project-specific agent instructions (local only)
 AGENTS.md
+
+# Local Development
+LocalDevelopment.md

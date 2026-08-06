@@ -22,6 +22,10 @@ spec:
           env:
             - name: MONGO_URI
               value: "mongodb://admin:Raghav3214!@mongodb.mongodb.svc.cluster.local:27017/interview-prep?authSource=admin"
+            - name: POSTGRES_URL
+              value: "postgres://interview_prep:change-me@postgres.postgres.svc.cluster.local:5432/interview_prep"
+            - name: AUTH_ADMIN_KEY
+              value: "CopOJdxsQZbAP2WQt1jPsmBdMTCrWa9hXyZl6r1lLk4="
             - name: DEEPSEEK_API_KEY
               valueFrom:
                 secretKeyRef:

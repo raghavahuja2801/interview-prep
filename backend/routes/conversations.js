@@ -1,7 +1,10 @@
 import { Router } from 'express'
 import Conversation from '../models/Conversation.js'
+import requireAuth from '../middleware/requireAuth.js'
 
 const router = Router()
+
+router.use(requireAuth)
 
 // POST /api/conversations — create a new conversation
 router.post('/', async (req, res) => {
@@ -11,6 +14,7 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'problemId is required' })
     }
     const conversation = await Conversation.create({
+      ownerUserId: req.user.id,
       problemId,
       messages: [],
       diagrams: [],
@@ -28,6 +32,7 @@ router.post('/', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const filter = {}
+    filter.ownerUserId = req.user.id
     if (req.query.problemId) {
       filter.problemId = req.query.problemId
     }
@@ -45,7 +50,7 @@ router.get('/', async (req, res) => {
 // GET /api/conversations/:id — full conversation with messages
 router.get('/:id', async (req, res) => {
   try {
-    const conversation = await Conversation.findById(req.params.id).lean()
+    const conversation = await Conversation.findOne({ _id: req.params.id, ownerUserId: req.user.id }).lean()
     if (!conversation) {
       return res.status(404).json({ error: 'Conversation not found' })
     }
@@ -66,8 +71,8 @@ router.patch('/:id', async (req, res) => {
     if (typeof req.body.durationSeconds === 'number') {
       updates.durationSeconds = req.body.durationSeconds
     }
-    const conversation = await Conversation.findByIdAndUpdate(
-      req.params.id,
+    const conversation = await Conversation.findOneAndUpdate(
+      { _id: req.params.id, ownerUserId: req.user.id },
       { $set: updates },
       { new: true, select: 'problemId completed durationSeconds startedAt lastActivityAt' }
     ).lean()
@@ -84,7 +89,7 @@ router.patch('/:id', async (req, res) => {
 // DELETE /api/conversations/:id
 router.delete('/:id', async (req, res) => {
   try {
-    const conversation = await Conversation.findByIdAndDelete(req.params.id).lean()
+    const conversation = await Conversation.findOneAndDelete({ _id: req.params.id, ownerUserId: req.user.id }).lean()
     if (!conversation) {
       return res.status(404).json({ error: 'Conversation not found' })
     }

@@ -227,6 +227,7 @@ export default function ChatPanel({ problem, initialConversationId, onConversati
     try {
       const res = await fetch(`/api/evaluate`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ conversationId }),
       })

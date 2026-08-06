@@ -11,6 +11,7 @@ const API_BASE = import.meta.env.VITE_API_URL || '/api'
 export async function renderDiagram({ source, conversationId, format = 'svg' }) {
   const res = await fetch(`${API_BASE}/diagram/render`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ source, conversationId, format }),
   })
@@ -49,6 +50,7 @@ export async function sendDiagramChatMessage({
 }) {
   const res = await fetch(`${API_BASE}/chat`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       event,

@@ -17,6 +17,7 @@ export default function DiagramPanel({ problem, conversationId, onSendToChat, ex
     setPreviewError(null)
     fetch('/api/diagram/render', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ source, format: 'svg' }),
     })

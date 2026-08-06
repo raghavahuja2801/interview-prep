@@ -13,6 +13,7 @@
     "dotenv": "^17.4.2",
     "express": "^4.21.0",
     "mongoose": "^8.7.0",
+    "pg": "^8.22.0",
     "openai": "^7.1.0",
     "plantuml-encoder": "^1.4.0"
   }

@@ -3,8 +3,11 @@ import Problem from '../models/Problem.js'
 import Conversation from '../models/Conversation.js'
 import { getEvaluation } from '../services/evaluator.js'
 import { syncInterviewToNotion } from '../services/notion.js'
+import requireAuth from '../middleware/requireAuth.js'
 
 const router = Router()
+
+router.use(requireAuth)
 
 // POST /api/evaluate — score a completed interview
 router.post('/', async (req, res) => {
@@ -15,7 +18,7 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'conversationId is required' })
     }
 
-    const conversation = await Conversation.findById(conversationId).lean()
+    const conversation = await Conversation.findOne({ _id: conversationId, ownerUserId: req.user.id }).lean()
     if (!conversation) {
       return res.status(404).json({ error: 'Conversation not found' })
     }
@@ -36,14 +39,17 @@ router.post('/', async (req, res) => {
     const score = scoreMatch ? Math.min(Math.max(parseInt(scoreMatch[1], 10), 0), 10) : null
 
     // Save evaluation and score on the conversation
-    await Conversation.findByIdAndUpdate(conversationId, {
-      $set: {
-        completed: true,
-        evaluation,
-        score,
-        lastActivityAt: new Date(),
+    await Conversation.findOneAndUpdate(
+      { _id: conversationId, ownerUserId: req.user.id },
+      {
+        $set: {
+          completed: true,
+          evaluation,
+          score,
+          lastActivityAt: new Date(),
+        },
       },
-    })
+    )
 
     // Sync to Notion (non-blocking — failures are logged, not returned)
     syncInterviewToNotion({

@@ -29,6 +29,7 @@ const diagramSchema = new mongoose.Schema(
 
 const conversationSchema = new mongoose.Schema(
   {
+    ownerUserId: { type: String, index: true, default: null },
     problemId: { type: String, required: true, index: true },
     messages: [messageSchema],
     diagrams: [diagramSchema],
