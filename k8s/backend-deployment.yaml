@@ -31,6 +31,16 @@ spec:
                 secretKeyRef:
                   name: deepseek-key
                   key: api-key
+            - name: FISH_AUDIO_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fish-audio
+                  key: api-key
+            - name: FISH_VOICE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: fish-audio
+                  key: voice-id
             - name: PLANTUML_ENDPOINT
               value: "http://plantuml.infrastructure.svc:80"
             - name: MINIO_ENDPOINT

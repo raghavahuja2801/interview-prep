@@ -1,15 +1,75 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
-import { Send, MessageSquare, RotateCcw, StopCircle } from 'lucide-react'
+import { Send, MessageSquare, RotateCcw, StopCircle, Volume2 } from 'lucide-react'
 import InterviewTimer from './InterviewTimer.jsx'
 import { marked } from 'marked'
 import ChatMessage from './ChatMessage.jsx'
-import { sendChatMessage } from '../api/chat.js'
+import { streamChatMessage } from '../api/chat.js'
 import { sendDiagramChatMessage } from '../api/diagram.js'
 import { createConversation, fetchConversation, updateConversation } from '../api/conversations.js'
 
 marked.setOptions({ breaks: true, gfm: true })
 
-export default function ChatPanel({ problem, initialConversationId, onConversationChange, onInterviewStateChange, externalMessage }) {
+// Queue of base64 MP3 clips → sequential playback through a single <audio>.
+function createAudioPlayer(onStateChange) {
+  let queue = []
+  let playing = false
+  let audio = null
+
+  function playNext() {
+    if (playing || queue.length === 0) return
+    const clip = queue.shift()
+    playing = true
+    onStateChange?.(true)
+
+    audio = new Audio(`data:${clip.mimeType || 'audio/mpeg'};base64,${clip.base64}`)
+    audio.onended = () => {
+      playing = false
+      audio = null
+      if (queue.length === 0) {
+        onStateChange?.(false)
+      } else {
+        playNext()
+      }
+    }
+    audio.onerror = () => {
+      playing = false
+      audio = null
+      onStateChange?.(false)
+      queue = []
+    }
+    audio.play().catch(() => {
+      playing = false
+      audio = null
+      onStateChange?.(false)
+      queue = []
+    })
+  }
+
+  return {
+    enqueue(clip) {
+      queue.push(clip)
+      playNext()
+    },
+    stop() {
+      queue = []
+      if (audio) {
+        audio.pause()
+        audio = null
+      }
+      playing = false
+      onStateChange?.(false)
+    },
+  }
+}
+
+export default function ChatPanel({
+  problem,
+  initialConversationId,
+  onConversationChange,
+  onInterviewStateChange,
+  externalMessage,
+  audioEnabled = false,
+}) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -19,11 +79,50 @@ export default function ChatPanel({ problem, initialConversationId, onConversati
   const [evaluating, setEvaluating] = useState(false)
   const [conversationId, setConversationId] = useState(initialConversationId || null)
   const [conversationElapsed, setConversationElapsed] = useState(0)
+  const [partialReply, setPartialReply] = useState('')
+  const [speaking, setSpeaking] = useState(false)
   const scrollRef = useRef(null)
   const textareaRef = useRef(null)
+  const audioEnabledRef = useRef(audioEnabled)
+  const audioPlayerRef = useRef(null)
+  // True while a chat/audio stream is in flight. Used to stop the conversation
+  // reload effect from clobbering in-memory messages when the conversation id
+  // round-trips through the parent mid-stream (the DB snapshot is stale then).
+  const streamingRef = useRef(false)
 
-  // Load existing conversation if navigating to a past one
+  // Keep a ref mirror of audioEnabled so async stream/audio callbacks see the
+  // latest value without re-subscribing the closures.
+  audioEnabledRef.current = audioEnabled
+
+  // Single audio player for the lifetime of the panel.
+  if (audioPlayerRef.current === null) {
+    audioPlayerRef.current = createAudioPlayer(setSpeaking)
+  }
+
+  // Stop playback when the toggle is switched off.
   useEffect(() => {
+    if (!audioEnabled) {
+      audioPlayerRef.current?.stop()
+    }
+  }, [audioEnabled])
+
+  // Clean up audio on unmount.
+  useEffect(() => () => audioPlayerRef.current?.stop(), [])
+
+  // Load existing conversation if navigating to a past one.
+  // While a stream is in flight, the conversation id is propagated up to the
+  // parent and back down as initialConversationId. At that point the DB snapshot
+  // is stale (the AI reply is only persisted at the end of the stream), so a
+  // reload would clobber the live message list. Skip the DB refresh while
+  // streaming; just keep the local id in sync.
+  useEffect(() => {
+    if (streamingRef.current) {
+      if (initialConversationId) {
+        setConversationId(initialConversationId)
+      }
+      return
+    }
+
     if (initialConversationId) {
       setConversationId(initialConversationId)
       setLoading(true)
@@ -73,44 +172,66 @@ export default function ChatPanel({ problem, initialConversationId, onConversati
 
     const doSend = async () => {
       setLoading(true)
+      setPartialReply('')
+      streamingRef.current = true
+      let streamedText = ''
       try {
-        const data = await sendDiagramChatMessage({
+        // Show the diagram-bearing user message immediately.
+        setMessages((prev) => [...prev, { role: 'user', content: description || 'Attached a diagram' }])
+
+        let streamedConversationId = conversationId
+        await sendDiagramChatMessage({
           problemId: problem.id,
           conversationId,
           message: description || '',
           diagramSource: source,
           diagramDescription: description || '',
           event: conversationId ? 'message' : 'start',
+          handlers: {
+            onMeta: ({ conversationId: cid, diagram }) => {
+              if (cid && cid !== streamedConversationId) {
+                streamedConversationId = cid
+                setConversationId(cid)
+                onConversationChange?.(cid)
+              }
+              // Attach the stored/rendered diagram to the last (user) message.
+              if (diagram) {
+                setMessages((prev) => {
+                  const next = prev.slice()
+                  const last = next[next.length - 1]
+                  if (last && last.role === 'user') {
+                    next[next.length - 1] = {
+                      ...last,
+                      diagram: {
+                        inlineDataUrl: diagram.inlineDataUrl || null,
+                        imageKey: diagram.imageKey || null,
+                      },
+                    }
+                  }
+                  return next
+                })
+              }
+            },
+            onText: (delta) => {
+              streamedText += delta
+              setPartialReply(streamedText)
+            },
+            onAudio: (clip) => {
+              if (audioEnabledRef.current) audioPlayerRef.current?.enqueue(clip)
+            },
+          },
         })
-
-        if (data.conversationId) {
-          if (data.conversationId !== conversationId) {
-            setConversationId(data.conversationId)
-            onConversationChange?.(data.conversationId)
-          }
-          // Reload the full conversation from DB as source of truth
-          const conv = await fetchConversation(data.conversationId)
-          if (conv?.messages) {
-            setMessages(conv.messages)
-          }
-        } else {
-          // Fallback if no conversationId returned
-          const userMsg = { role: 'user', content: description || 'Attached a diagram' }
-          if (data.diagram) {
-            userMsg.diagram = {
-              inlineDataUrl: data.diagram.inlineDataUrl || null,
-              imageKey: data.diagram.imageKey || null,
-            }
-          }
-          setMessages((prev) => [...prev, userMsg, { role: 'assistant', content: data.reply }])
-        }
+        // Commit the streamed reply.
+        setMessages((prev) => [...prev, { role: 'assistant', content: streamedText }])
       } catch (err) {
+        if (err.message === 'aborted') return
         setMessages((prev) => [
           ...prev,
-          { role: 'user', content: description || 'Attached a diagram' },
           { role: 'assistant', content: err.message || 'Something went wrong.', isError: true },
         ])
       } finally {
+        streamingRef.current = false
+        setPartialReply('')
         setLoading(false)
       }
     }
@@ -127,31 +248,42 @@ export default function ChatPanel({ problem, initialConversationId, onConversati
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages, loading, evaluation, evaluating])
+  }, [messages, loading, evaluation, evaluating, partialReply])
 
   async function callBackend(newMessage, event, historyForCall) {
     setLoading(true)
+    setPartialReply('')
+    streamingRef.current = true
+    let streamedText = ''
     try {
-      const data = await sendChatMessage({
+      await streamChatMessage({
         problemId: problem.id,
         conversationId,
         message: newMessage,
         history: historyForCall,
         event,
+        audioEnabled: audioEnabledRef.current,
+        handlers: {
+          onMeta: ({ conversationId: cid }) => {
+            if (cid && cid !== conversationId) {
+              setConversationId(cid)
+              onConversationChange?.(cid)
+            }
+          },
+          onText: (delta) => {
+            streamedText += delta
+            setPartialReply(streamedText)
+          },
+          onAudio: (clip) => {
+            if (audioEnabledRef.current) audioPlayerRef.current?.enqueue(clip)
+          },
+        },
       })
-      const aiMsg = { role: 'assistant', content: data.reply }
-      if (data.diagram) {
-        aiMsg.diagram = {
-          inlineDataUrl: data.diagram.inlineDataUrl || null,
-          imageKey: data.diagram.imageKey || null,
-        }
-      }
-      setMessages((prev) => [...prev, aiMsg])
-      if (data.conversationId && data.conversationId !== conversationId) {
-        setConversationId(data.conversationId)
-        onConversationChange?.(data.conversationId)
-      }
+
+      // Commit the fully streamed reply as a proper assistant message.
+      setMessages((prev) => [...prev, { role: 'assistant', content: streamedText }])
     } catch (err) {
+      if (err.message === 'aborted') return
       setMessages((prev) => [
         ...prev,
         {
@@ -161,6 +293,8 @@ export default function ChatPanel({ problem, initialConversationId, onConversati
         },
       ])
     } finally {
+      streamingRef.current = false
+      setPartialReply('')
       setLoading(false)
     }
   }
@@ -212,6 +346,8 @@ export default function ChatPanel({ problem, initialConversationId, onConversati
     setEvaluation(null)
     setConversationElapsed(0)
     setInput('')
+    setPartialReply('')
+    audioPlayerRef.current?.stop()
     onInterviewStateChange?.(false)
     onConversationChange?.(null)
   }
@@ -220,6 +356,8 @@ export default function ChatPanel({ problem, initialConversationId, onConversati
     if (!conversationId || ended) return
     setEnded(true)
     setEvaluating(true)
+    setPartialReply('')
+    audioPlayerRef.current?.stop()
     // Save final duration before evaluating
     try {
       await updateConversation(conversationId, { durationSeconds: conversationElapsed })
@@ -386,7 +524,51 @@ export default function ChatPanel({ problem, initialConversationId, onConversati
           <ChatMessage key={i} role={m.role} content={m.content} isError={m.isError} diagram={m.diagram} />
         ))}
 
-        {loading && (
+        {/* Live-streaming assistant reply */}
+        {partialReply && (
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <div
+              style={{
+                flexShrink: 0,
+                width: 26,
+                height: 26,
+                borderRadius: '50%',
+                background: 'var(--accent)',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 10.5,
+                fontWeight: 700,
+                fontFamily: 'var(--font-mono)',
+              }}
+            >
+              AI
+            </div>
+            <div
+              style={{
+                background: 'var(--bg)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-md)',
+                padding: '11px 14px',
+                fontSize: 14,
+                lineHeight: 1.6,
+                color: 'var(--text-primary)',
+                maxWidth: '100%',
+              }}
+            >
+              <span className="chat-markdown" dangerouslySetInnerHTML={{ __html: marked.parse(partialReply, { async: false }) }} />
+              {speaking && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 8, fontSize: 11, color: 'var(--accent)', verticalAlign: 'middle' }}>
+                  <Volume2 size={12} />
+                  speaking
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {loading && !partialReply && (
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
             <div
               style={{
