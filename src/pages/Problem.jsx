@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, Gauge, History, Trash2, Play, BarChart3, PenSquare, MessageSquare } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Gauge, History, Trash2, Play, BarChart3, PenSquare, MessageSquare, Volume2, VolumeX } from 'lucide-react'
 import { fetchProblemById } from '../api/problems.js'
 import { fetchConversations, deleteConversation, fetchConversation } from '../api/conversations.js'
 import DifficultyTag from '../components/DifficultyTag.jsx'
@@ -16,6 +16,18 @@ export default function Problem() {
   const [pastConversations, setPastConversations] = useState([])
   const [activeConversationId, setActiveConversationId] = useState(null)
   const [evalDialog, setEvalDialog] = useState(null) // { evaluation, score }
+  const [audioEnabled, setAudioEnabled] = useState(() => {
+    // Persist the audio toggle across sessions on this browser.
+    return localStorage.getItem('interview_audio_enabled') === '1'
+  })
+
+  function handleToggleAudio() {
+    setAudioEnabled((prev) => {
+      const next = !prev
+      localStorage.setItem('interview_audio_enabled', next ? '1' : '0')
+      return next
+    })
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -160,6 +172,31 @@ export default function Problem() {
         >
           {problem.category}
         </span>
+
+        {/* Audio toggle — voices the interviewer's replies */}
+        <button
+          type="button"
+          onClick={handleToggleAudio}
+          title={audioEnabled ? 'Turn off voice replies' : 'Turn on voice replies'}
+          aria-pressed={audioEnabled}
+          style={{
+            marginLeft: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 7,
+            border: '1px solid var(--border)',
+            borderRadius: 999,
+            padding: '6px 12px',
+            background: audioEnabled ? 'var(--accent-soft)' : 'var(--bg-subtle)',
+            color: audioEnabled ? 'var(--accent)' : 'var(--text-secondary)',
+            cursor: 'pointer',
+            fontSize: 12.5,
+            fontWeight: 600,
+          }}
+        >
+          {audioEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
+          {audioEnabled ? 'Voice on' : 'Voice off'}
+        </button>
       </div>
 
       {/* split content */}
@@ -389,6 +426,7 @@ export default function Problem() {
             problem={problem}
             initialConversationId={activeConversationId}
             onConversationChange={setActiveConversationId}
+            audioEnabled={audioEnabled}
           />
         </div>
       </div>
@@ -405,7 +443,7 @@ export default function Problem() {
   )
 }
 
-function RightPanel({ problem, initialConversationId, onConversationChange }) {
+function RightPanel({ problem, initialConversationId, onConversationChange, audioEnabled }) {
   const [activeTab, setActiveTab] = useState('chat')
   const [chatConversationId, setChatConversationId] = useState(initialConversationId)
   const [interviewStarted, setInterviewStarted] = useState(false)
@@ -507,6 +545,7 @@ function RightPanel({ problem, initialConversationId, onConversationChange }) {
             onConversationChange={handleConversationChange}
             onInterviewStateChange={setInterviewStarted}
             externalMessage={diagramToSend}
+            audioEnabled={audioEnabled}
           />
         </div>
         <div style={{ display: activeTab === 'diagram' ? 'contents' : 'none', height: '100%' }}>

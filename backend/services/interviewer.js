@@ -276,15 +276,14 @@ ${problem.constraints.map((c) => `- ${c}`).join('\n')}`
  * @param {string} message - The latest user message ("" for start)
  * @returns {Promise<string>} The AI interviewer's reply
  */
-export async function getInterviewerReply({ problem, history, message }) {
-  const apiKey = process.env.DEEPSEEK_API_KEY
-  if (!apiKey) {
-    throw new Error('DEEPSEEK_API_KEY is not configured on the server')
-  }
-
+/**
+ * Build the OpenAI-compatible messages array for an interview request.
+ * Shared by the non-streaming `getInterviewerReply` and the streaming
+ * `streamInterviewerReply` so their prompts stay byte-identical.
+ */
+function buildMessages({ problem, history, message }) {
   const systemPrompt = buildSystemPrompt(problem)
 
-  // Build messages array: system prompt + history + latest user message
   const messages = [{ role: 'system', content: systemPrompt }]
 
   // If there's no message and no history, this is the start — let the AI kick off
@@ -300,6 +299,102 @@ export async function getInterviewerReply({ problem, history, message }) {
       messages.push({ role: 'user', content: message })
     }
   }
+
+  return messages
+}
+
+/**
+ * Streaming DeepSeek completion for the interviewer.
+ *
+ * Returns an async generator yielding either:
+ *   - { type: 'delta', text } — a fresh piece of reply text to append
+ *   - { type: 'done' }        — the stream finished
+ *
+ * Throws on transport errors or a non-OK API response. Uses `stream: true`
+ * so token deltas are available before the full reply is assembled.
+ */
+export async function* streamInterviewerReply({ problem, history, message, signal } = {}) {
+  const apiKey = process.env.DEEPSEEK_API_KEY
+  if (!apiKey) {
+    throw new Error('DEEPSEEK_API_KEY is not configured on the server')
+  }
+
+  const messages = buildMessages({ problem, history, message })
+
+  const res = await fetch(`${DEEPSEEK_BASE}/chat/completions`, {
+    method: 'POST',
+    signal,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages,
+      temperature: 0.7,
+      max_tokens: 2048,
+      stream: true,
+    }),
+  })
+
+  if (!res.ok) {
+    const errBody = await res.text()
+    throw new Error(`DeepSeek API error ${res.status}: ${errBody}`)
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+
+      // SSE frames arrive as lines of `data: {json}` separated by blank lines.
+      // Keep the last (possibly partial) line in the buffer across reads.
+      const lines = buffer.split('\n')
+      buffer = lines.pop()
+
+      for (const rawLine of lines) {
+        const line = rawLine.trim()
+        if (!line.startsWith('data:')) continue
+
+        const payload = line.slice(5).trim()
+        if (payload === '[DONE]') {
+          yield { type: 'done' }
+          return
+        }
+
+        try {
+          const json = JSON.parse(payload)
+          const delta = json.choices?.[0]?.delta?.content
+          if (delta) {
+            yield { type: 'delta', text: delta }
+          }
+        } catch (_) {
+          // Ignore ping frames and malformed keep-alive lines.
+        }
+      }
+    }
+  } finally {
+    // Drain anything still buffered at the end of the stream.
+    buffer += decoder.decode()
+  }
+}
+
+/**
+ * Non-streaming DeepSeek completion. Returns the full reply string.
+ * Kept for any non-SSE call sites; interview chat uses the stream route.
+ */
+export async function getInterviewerReply({ problem, history, message }) {
+  const apiKey = process.env.DEEPSEEK_API_KEY
+  if (!apiKey) {
+    throw new Error('DEEPSEEK_API_KEY is not configured on the server')
+  }
+
+  const messages = buildMessages({ problem, history, message })
 
   const res = await fetch(`${DEEPSEEK_BASE}/chat/completions`, {
     method: 'POST',

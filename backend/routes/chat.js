@@ -1,7 +1,8 @@
 import { Router } from 'express'
 import Problem from '../models/Problem.js'
 import Conversation from '../models/Conversation.js'
-import { getInterviewerReply } from '../services/interviewer.js'
+import { streamInterviewerReply } from '../services/interviewer.js'
+import { synthesizeReply, splitIntoSentences } from '../services/tts.js'
 import { renderSvg, renderPng } from '../services/plantuml.js'
 import { storeDiagram } from '../services/minio.js'
 import crypto from 'crypto'
@@ -11,10 +12,20 @@ const router = Router()
 
 router.use(requireAuth)
 
+// Write a single SSE frame: `event: <name>\ndata: <json>\n\n`
+function sseWrite(res, event, data) {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+}
+
 // POST /api/chat — send a message in an interview
 router.post('/', async (req, res) => {
+  // Abort the upstream DeepSeek fetch if the client disconnects mid-stream.
+  const controller = new AbortController()
+  const onClose = () => controller.abort()
+  req.on('close', onClose)
+
   try {
-    const { problemId, conversationId, message, history, event, diagram } = req.body
+    const { problemId, conversationId, message, history, event, diagram, audioEnabled } = req.body
 
     if (!problemId) {
       return res.status(400).json({ error: 'problemId is required' })
@@ -145,11 +156,87 @@ router.post('/', async (req, res) => {
       })
 
     // --- Get AI reply using the DB-stored history, NOT the client-passed history ---
-    const reply = await getInterviewerReply({
-      problem,
-      history: storedHistory.slice(0, -1), // exclude the just-pushed user message
-      message: userContent || '',
+    // Switch the response into Server-Sent Events streaming mode. Text deltas
+    // from DeepSeek are pushed as `text` events; when audio is enabled, the
+    // synthesized MP3 follows as an `audio` event once the reply completes.
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
     })
+    res.flushHeaders()
+
+    // Send conversation id + any attached diagram metadata up front so the
+    // frontend can wire up navigation and bubble rendering while text streams.
+    sseWrite(res, 'meta', {
+      conversationId: conversation._id.toString(),
+      diagram: attachedDiagram || null,
+    })
+
+    let reply = ''
+    // Audio is emitted per completed sentence while text keeps streaming.
+    // Serialise the emissions so the clips arrive in order.
+    let audioChain = Promise.resolve()
+    let sentenceBuffer = ''
+    const enqueueSentenceAudio = (sentence) => {
+      if (!audioEnabled) return
+      audioChain = audioChain.then(async () => {
+        try {
+          const { base64, mimeType } = await synthesizeReply(sentence)
+          if (!res.writableEnded) {
+            sseWrite(res, 'audio', { base64, mimeType })
+          }
+        } catch (ttsErr) {
+          if (!res.writableEnded) {
+            console.warn('Fish Audio TTS skipped:', ttsErr.message)
+          }
+        }
+      })
+    }
+
+    try {
+      for await (const chunk of streamInterviewerReply({
+        problem,
+        history: storedHistory.slice(0, -1), // exclude the just-pushed user message
+        message: userContent || '',
+        signal: controller.signal,
+      })) {
+        if (chunk.type === 'delta') {
+          reply += chunk.text
+          sseWrite(res, 'text', { delta: chunk.text })
+
+          // Accumulate sentences and synthesise each once it completes.
+          sentenceBuffer += chunk.text
+          const trailingBoundary = /(?<=[.!?])\s+$|\n+$/.test(sentenceBuffer)
+          const sentences = splitIntoSentences(sentenceBuffer)
+          if (trailingBoundary) {
+            for (const s of sentences) enqueueSentenceAudio(s)
+            sentenceBuffer = ''
+          } else if (sentences.length > 1) {
+            for (const s of sentences.slice(0, -1)) enqueueSentenceAudio(s)
+            sentenceBuffer = sentences[sentences.length - 1]
+          }
+        } else if (chunk.type === 'done') {
+          break
+        }
+      }
+    } catch (err) {
+      // The client aborted (e.g. left the page) — clean shutdown.
+      if (err.name === 'AbortError' || res.writableEnded) {
+        return
+      }
+      throw err
+    }
+
+    // Flush any trailing partial sentence as the final audio clip.
+    for (const s of splitIntoSentences(sentenceBuffer)) {
+      enqueueSentenceAudio(s)
+    }
+
+    if (!reply) {
+      throw new Error('DeepSeek returned an empty response')
+    }
 
     // --- Persist the AI reply ---
     // NOTE: We intentionally do NOT attach the diagram ref to the AI message.
@@ -160,13 +247,26 @@ router.post('/', async (req, res) => {
     conversation.lastActivityAt = new Date()
     await conversation.save()
 
-    res.json({
-      reply,
-      conversationId: conversation._id.toString(),
-      diagram: attachedDiagram,
-    })
+    // --- Stream audio if requested ---
+    // Wait for any in-flight per-sentence audio to flush before closing.
+    if (audioEnabled) {
+      await audioChain
+    }
+
+    sseWrite(res, 'done', { reply, conversationId: conversation._id.toString() })
+    res.end()
   } catch (err) {
     console.error('Chat error:', err)
+    // If we've already started streaming, push an SSE error frame instead of JSON.
+    if (res.headersSent) {
+      try {
+        sseWrite(res, 'error', { error: err.message || 'Failed to get AI response' })
+        res.end()
+      } catch (_) {
+        // Response already closed — nothing to do.
+      }
+      return
+    }
     res.status(500).json({ error: err.message || 'Failed to get AI response' })
   }
 })

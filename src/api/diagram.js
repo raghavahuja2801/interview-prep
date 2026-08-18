@@ -1,5 +1,7 @@
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
+import { consumeChatStream } from './chat.js'
+
 /**
  * Renders a PlantUML diagram and stores it in MinIO.
  * @param {Object} params
@@ -47,11 +49,14 @@ export async function sendDiagramChatMessage({
   diagramDescription,
   history,
   event,
+  handlers = {},
+  signal,
 }) {
   const res = await fetch(`${API_BASE}/chat`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
+    signal,
     body: JSON.stringify({
       event,
       problemId,
@@ -71,7 +76,7 @@ export async function sendDiagramChatMessage({
     throw new Error(err.error || `Chat API responded with ${res.status}`)
   }
 
-  return res.json()
+  return consumeChatStream(res, handlers, signal)
 }
 
 /**
