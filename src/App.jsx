@@ -80,7 +80,7 @@ export default function App() {
 
       <Routes>
         <Route path="/" element={<Home />} />
-        <Route path="/problem/:id" element={<Problem />} />
+        <Route path="/problem/:id" element={<Problem user={user} />} />
         <Route
           path="/profile"
           element={

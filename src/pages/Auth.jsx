@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ShieldCheck, LogIn, UserPlus, Sparkles, ArrowRight, ClipboardPaste } from 'lucide-react'
+import { MessageSquare, BarChart3, History, LogIn, UserPlus, ArrowRight, ClipboardPaste } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { fetchInvite, login, register } from '../api/auth.js'
 
@@ -106,29 +106,37 @@ export default function Auth({ onAuthenticated }) {
     >
       <div style={{ padding: '72px 64px', display: 'flex', alignItems: 'center' }}>
         <div style={{ maxWidth: 560 }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 18, padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 999, background: 'rgba(255, 255, 255, 0.7)' }}>
-            <Sparkles size={14} color="var(--accent)" />
-            <span style={{ fontSize: 12, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-              Self-hosted auth enabled
-            </span>
-          </div>
-
           <h1 style={{ margin: '0 0 14px', fontSize: 54, lineHeight: 1, letterSpacing: -2.1 }}>
-            AI mock interviews, behind your own login.
+            Practice system design interviews before the real thing.
           </h1>
           <p style={{ margin: '0 0 28px', maxWidth: 520, fontSize: 17, lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-            Keep the app private, share invite codes with friends and peers, and let each person keep their own conversation history and scores.
+            An AI interviewer walks you through HLD and LLD design problems the same way a real one would, then scores you with detailed feedback.
           </p>
 
-          <div style={{ display: 'grid', gap: 14, maxWidth: 480 }}>
+          <div style={{ display: 'grid', gap: 12, maxWidth: 480 }}>
             {[
-              'Invite-only registration backed by your Postgres auth tables.',
-              'HttpOnly session cookies so the frontend never stores tokens.',
-              'Private conversation ownership per user in MongoDB.',
+              {
+                icon: MessageSquare,
+                title: 'A realistic interview',
+                body: 'Requirements, estimation, architecture, then deep dives. Same flow as the real thing.',
+              },
+              {
+                icon: BarChart3,
+                title: 'A score, with reasons',
+                body: 'After every session you get a score and a write-up of what to improve.',
+              },
+              {
+                icon: History,
+                title: 'Kept on your profile',
+                body: 'Every session is saved, so you can look back at how you\'ve improved.',
+              },
             ].map((item) => (
-              <div key={item} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '14px 16px', border: '1px solid var(--border)', borderRadius: 14, background: 'rgba(255, 255, 255, 0.76)' }}>
-                <ShieldCheck size={18} color="var(--accent)" style={{ flexShrink: 0, marginTop: 1 }} />
-                <span style={{ color: 'var(--text-primary)', fontSize: 14.5, lineHeight: 1.55 }}>{item}</span>
+              <div key={item.title} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '14px 16px', border: '1px solid var(--border)', borderRadius: 14, background: 'rgba(255, 255, 255, 0.76)' }}>
+                <item.icon size={18} color="var(--accent)" style={{ flexShrink: 0, marginTop: 2 }} />
+                <div>
+                  <div style={{ color: 'var(--text-primary)', fontSize: 14.5, fontWeight: 700, marginBottom: 2 }}>{item.title}</div>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: 13.5, lineHeight: 1.5 }}>{item.body}</div>
+                </div>
               </div>
             ))}
           </div>
@@ -138,14 +146,11 @@ export default function Auth({ onAuthenticated }) {
       <div style={{ padding: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ width: 'min(440px, 100%)', background: 'linear-gradient(180deg, rgba(255,255,255,0.94), rgba(251,251,250,0.98))', border: '1px solid var(--border)', borderRadius: 24, boxShadow: '0 30px 90px rgba(15, 23, 42, 0.12)', overflow: 'hidden' }}>
           <div style={{ padding: 22, borderBottom: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>
-              Access the workspace
-            </div>
             <h2 style={{ margin: '0 0 6px', fontSize: 24, letterSpacing: -0.7 }}>{title}</h2>
             <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: 14.5, lineHeight: 1.55 }}>
               {tab === TABS.LOGIN
-                ? 'Sign in to continue your interview sessions.'
-                : 'Register with an invite code to join the shared practice space.'}
+                ? 'Sign in to pick up where you left off.'
+                : 'To join, grab an invite code from a friend.'}
             </p>
           </div>
 

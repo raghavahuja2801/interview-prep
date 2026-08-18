@@ -1,14 +1,15 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, Gauge, History, Trash2, Play, BarChart3, PenSquare, MessageSquare, Volume2, VolumeX } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Gauge, History, Trash2, Play, BarChart3, PenSquare, MessageSquare, Volume2, VolumeX, MessageCircle } from 'lucide-react'
 import { fetchProblemById } from '../api/problems.js'
 import { fetchConversations, deleteConversation, fetchConversation } from '../api/conversations.js'
 import DifficultyTag from '../components/DifficultyTag.jsx'
 import ChatPanel from '../components/ChatPanel.jsx'
 import DiagramPanel from '../components/DiagramPanel.jsx'
 import EvaluationDialog from '../components/EvaluationDialog.jsx'
+import DiscussionPanel from '../components/DiscussionPanel.jsx'
 
-export default function Problem() {
+export default function Problem({ user }) {
   const { id } = useParams()
   const navigate = useNavigate()
   const [problem, setProblem] = useState(null)
@@ -16,6 +17,7 @@ export default function Problem() {
   const [pastConversations, setPastConversations] = useState([])
   const [activeConversationId, setActiveConversationId] = useState(null)
   const [evalDialog, setEvalDialog] = useState(null) // { evaluation, score }
+  const [discussionOpen, setDiscussionOpen] = useState(false)
   const [audioEnabled, setAudioEnabled] = useState(() => {
     // Persist the audio toggle across sessions on this browser.
     return localStorage.getItem('interview_audio_enabled') === '1'
@@ -173,6 +175,30 @@ export default function Problem() {
           {problem.category}
         </span>
 
+        {/* Discussion — per-problem real-time chat */}
+        <button
+          type="button"
+          onClick={() => setDiscussionOpen(true)}
+          title="Open the discussion for this problem"
+          style={{
+            marginLeft: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 7,
+            border: '1px solid var(--border)',
+            borderRadius: 999,
+            padding: '6px 12px',
+            background: 'var(--bg-subtle)',
+            color: 'var(--text-secondary)',
+            cursor: 'pointer',
+            fontSize: 12.5,
+            fontWeight: 600,
+          }}
+        >
+          <MessageCircle size={15} />
+          Discussion
+        </button>
+
         {/* Audio toggle — voices the interviewer's replies */}
         <button
           type="button"
@@ -180,7 +206,6 @@ export default function Problem() {
           title={audioEnabled ? 'Turn off voice replies' : 'Turn on voice replies'}
           aria-pressed={audioEnabled}
           style={{
-            marginLeft: 'auto',
             display: 'flex',
             alignItems: 'center',
             gap: 7,
@@ -437,6 +462,15 @@ export default function Problem() {
           evaluation={evalDialog.evaluation}
           score={evalDialog.score}
           onClose={() => setEvalDialog(null)}
+        />
+      )}
+
+      {/* Discussion dialog */}
+      {discussionOpen && problem && (
+        <DiscussionPanel
+          problemId={problem.id}
+          currentUser={user}
+          onClose={() => setDiscussionOpen(false)}
         />
       )}
     </div>

@@ -72,4 +72,37 @@ export async function ensureAuthSchema() {
   }
 }
 
+// Per-problem discussion chat: persistent message history + presence snapshots.
+// Redis owns real-time fan-out and the live online set; Postgres is the durable
+// source of truth for history (and a fallback presence record on shutdown).
+export async function ensureDiscussionSchema() {
+  const client = await pool.connect()
+
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id BIGSERIAL PRIMARY KEY,
+        problem_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        display_name TEXT,
+        body TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS chat_messages_problem_created_idx
+        ON chat_messages (problem_id, created_at);
+
+      CREATE TABLE IF NOT EXISTS problem_presence (
+        problem_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        display_name TEXT,
+        last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (problem_id, user_id)
+      );
+    `)
+  } finally {
+    client.release()
+  }
+}
+
 export { pool }

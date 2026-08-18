@@ -8,8 +8,10 @@ import chatRoutes from './routes/chat.js'
 import conversationRoutes from './routes/conversations.js'
 import evaluateRoutes from './routes/evaluate.js'
 import diagramRoutes from './routes/diagram.js'
+import discussionRoutes from './routes/discussion.js'
 import { ensureBucket } from './services/minio.js'
-import { ensureAuthSchema } from './services/postgres.js'
+import { ensureAuthSchema, ensureDiscussionSchema } from './services/postgres.js'
+import { initDiscussionHub } from './services/discussion.js'
 
 const PORT = process.env.PORT || 4000
 const MONGO_URI =
@@ -37,6 +39,7 @@ app.use('/api/chat', chatRoutes)
 app.use('/api/conversations', conversationRoutes)
 app.use('/api/evaluate', evaluateRoutes)
 app.use('/api/diagram', diagramRoutes)
+app.use('/api/discussion', discussionRoutes)
 
 // Connect and start
 async function start() {
@@ -56,6 +59,14 @@ async function start() {
     process.exit(1)
   }
 
+  try {
+    await ensureDiscussionSchema()
+    console.log('Discussion schema ready')
+  } catch (err) {
+    console.error('Postgres discussion setup error:', err)
+    process.exit(1)
+  }
+
   // Ensure MinIO bucket exists (non-fatal if unavailable)
   try {
     await ensureBucket()
@@ -64,9 +75,17 @@ async function start() {
     console.warn('MinIO bucket setup skipped:', err.message)
   }
 
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`API server listening on port ${PORT}`)
   })
+
+  // Per-problem discussion chat over WebSockets + Redis pub/sub.
+  try {
+    initDiscussionHub(server)
+    console.log('Discussion hub ready')
+  } catch (err) {
+    console.warn('Discussion hub init failed:', err.message)
+  }
 }
 
 start()
