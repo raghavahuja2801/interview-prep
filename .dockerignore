@@ -1,0 +1,19 @@
+# Build context hygiene for the frontend Docker build (built from repo root).
+# Keep the context small and keep secrets/local state out of the image.
+# NOTE: node_modules must stay in the context — the Dockerfile copies the
+# host node_modules into the build stage instead of running npm ci.
+
+.git
+.gitignore
+dist
+backend
+k8s
+*.md
+.env
+.env.*
+!.env.example
+task.md
+PersonalContext.md
+LocalDevelopment.md
+README.md
+AGENTS.md

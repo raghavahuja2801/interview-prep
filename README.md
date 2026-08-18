@@ -1,198 +1,155 @@
-# prep. — system design interview practice
+# System prep.
 
-A clean, Notion-style interview prep tool with an AI interviewer. Pick a system
-design problem (HLD or LLD), get interviewed by DeepSeek, and receive scored
-evaluations. Conversations are persisted in MongoDB.
+System design interview practice, on your own terms.
+
+prep. is a self-hosted practice tool for system design interviews. Pick a high
+level or low level design problem, get interviewed by an AI interviewer that
+follows the shape of a real interview, and finish with a score and a written
+evaluation of where you stand.
+
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/homepage-HLD.png" alt="High level design problem browser" width="720" />
+  <br />
+  <em>The high level design problem browser</em>
+</p>
+
+<p align="center">
+  <img src="screenshots/homepage-LLD.png" alt="Low level design problem browser" width="720" />
+  <br />
+  <em>The low level design problem browser</em>
+</p>
+
+<p align="center">
+  <img src="screenshots/ProblemPage-Interview.png" alt="Active interview with the AI interviewer" width="720" />
+  <br />
+  <em>An active interview with the AI interviewer</em>
+</p>
+
+<p align="center">
+  <img src="screenshots/ProblemPage-UML.png" alt="Diagram sketching during an interview" width="720" />
+  <br />
+  <em>Diagram sketching during an interview</em>
+</p>
+
+## Features
+
+**A realistic interview flow.** Every session moves through requirements,
+estimation, data model, high level architecture, deep dives, and a wrap up,
+mirroring a real system design round.
+
+**Scored feedback.** When you finish, you get a score out of 10 and a full
+written evaluation. Interviews that end early are capped at a lower score, so
+there is no incentive to stop before you are ready.
+
+**Diagrams as you go.** Sketch PlantUML diagrams during the interview. They are
+rendered and stored, and you can attach them to your answers or review them
+later.
+
+**Voice replies.** The interviewer can read its responses aloud, so you can
+practice the way you would in a real meeting instead of reading from a screen.
+
+**A live discussion for every problem.** Everyone viewing the same problem can
+chat in real time. Messages are stored in Postgres and fanned out through Redis
+pub/sub, so history survives restarts and anyone joining sees the conversation
+so far, plus who is online.
+
+**Your history, kept.** Every session is saved to your profile with its score
+and evaluation, so you can look back and see how you have improved.
+
+**Invite only.** Registration is gated by invite codes managed in your own
+Postgres. No third party account required.
+
+## How it works
+
+A session starts from the problem browser. Each problem is either high level or
+low level design, with a brief, functional requirements, non functional
+requirements, scale and constraints. Once you open it, the AI interviewer runs
+the session through the standard interview arc. You answer in your own words,
+draw diagrams when it helps, and the interviewer pushes back and goes deeper.
+
+When you end the interview, the evaluator scores your answers out of 10 and
+writes up what went well and what to focus on next. That evaluation is stored
+with the conversation so you can track your progress over time.
 
 ## Architecture
 
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────┐
-│  nginx FE    │────►│  Express BE  │────►│ MongoDB  │
-│  (React SPA) │     │  /api/*      │     │ (k3s)    │
-│              │     │  DeepSeek AI │     │          │
-│  interview.lab│     │              │     │ 80 probs │
-└──────────────┘     └──────────────┘     └──────────┘
-     ▲                      ▲
-     │                      │
-  Traefik Ingress       ClusterIP
-  (port 80/443)         (internal only)
-```
+The frontend is a React single page app served by nginx. All API and AI calls
+go through the Express backend, which is the single source of truth. The
+backend keeps interview conversations in MongoDB, authentication and the
+discussion chat in Postgres, and uses Redis for real time chat fan out and
+online presence. Generated diagrams are stored in MinIO object storage.
 
-## Quick start (local dev)
-
-### 1. Prerequisites
-
-- MongoDB running locally or port-forwarded: `kubectl port-forward -n mongodb svc/mongodb 27017:27017`
-- Postgres running locally or port-forwarded for auth/session storage: `kubectl port-forward -n postgres svc/postgres 5432:5432`
-- Node.js 22+
-- A [DeepSeek API key](https://platform.deepseek.com/api_keys)
-
-### 2. Seed the database
-
-```bash
-cd backend
-cp .env.example .env      # edit MONGO_URI if needed
-# edit POSTGRES_URL if your local port-forward or credentials differ
-npm install
-npm run seed              # loads 16 problems into MongoDB
+```mermaid
+flowchart LR
+  U[Browser] --> NGINX[nginx]
+  NGINX -->|"/api, /ws"| BE[Express backend]
+  BE --> MONGO[(MongoDB)]
+  BE --> PG[(Postgres)]
+  BE --> REDIS[(Redis)]
+  BE --> MINIO[(MinIO)]
 ```
 
-### 3. Start both servers
+### Message flow for a live discussion
 
-```bash
-# Terminal 1 — backend API
-cd backend && npm start           # → localhost:4000
+```mermaid
+sequenceDiagram
+  participant A as User A (browser)
+  participant B as Express backend
+  participant P as Postgres
+  participant R as Redis
+  participant C as User B (browser)
 
-# Terminal 2 — frontend dev server
-npm install
-npm run dev                       # → localhost:5173 (proxies /api → 4000)
+  A->>B: POST /api/discussion/:problemId/messages
+  B->>P: INSERT chat_messages
+  B->>R: PUBLISH problem:<id>:chat
+  R-->>B: broadcast to subscribers
+  B-->>C: WebSocket message
+  B-->>A: WebSocket message
 ```
 
-Open `http://localhost:5173` in your browser.
+## Tech stack
 
-### Auth setup
-
-The backend now uses Postgres for authentication, sessions, and invite codes. For local development, port-forward Postgres before starting the API:
-
-```bash
-kubectl port-forward -n postgres svc/postgres 5432:5432
-```
-
-Then set `POSTGRES_URL` in `backend/.env` to match your local credentials and database name.
-
-## Deploying to k3s
-
-### 1. Build & load images
-
-```bash
-# Frontend (multi-stage: Vite build + nginx)
-docker build -t interview-prep-frontend:latest .
-sudo docker save interview-prep-frontend:latest | sudo k3s ctr images import -
-
-# Backend (Express API)
-cd backend && docker build -t interview-prep-api:latest .
-sudo docker save interview-prep-api:latest | sudo k3s ctr images import -
-cd ..
-```
-
-### 2. Deploy
-
-```bash
-# Create namespace + secrets
-kubectl create ns interview-prep
-kubectl create secret generic deepseek-key \
-  --namespace=interview-prep \
-  --from-literal=api-key="sk-your-deepseek-api-key"
-
-# Apply all k8s manifests
-kubectl apply -f k8s/
-```
-
-### 3. Seed the database (first time only)
-
-```bash
-kubectl port-forward -n mongodb svc/mongodb 27017:27017
-cd backend && MONGO_URI='mongodb://localhost:27017/interview-prep?authSource=admin' npm run seed
-```
-
-### 4. Add DNS record
-
-Add a DNS rewrite in AdGuard (or your DNS server):
-- Domain: `interview.lab`
-- IP: your k3s node's IP (where Traefik is running)
-
-### 5. Verify
-
-```bash
-kubectl get pods -n interview-prep
-# → both pods should be Running
-
-curl -H "Host: interview.lab" http://<k3s-node-ip>/api/health
-# → {"status":"ok"}
-```
-
-Open `http://interview.lab` in your browser.
-
-## Re-deploying after changes
-
-### Frontend changes only
-
-```bash
-docker build -t interview-prep-frontend:latest .
-sudo docker save interview-prep-frontend:latest | sudo k3s ctr images import -
-kubectl rollout restart -n interview-prep deploy/interview-prep-frontend
-```
-
-### Backend changes only
-
-```bash
-cd backend && docker build -t interview-prep-api:latest .
-sudo docker save interview-prep-api:latest | sudo k3s ctr images import -
-kubectl rollout restart -n interview-prep deploy/interview-prep-api
-cd ..
-```
-
-### Both
-
-```bash
-docker build -t interview-prep-frontend:latest .
-sudo docker save interview-prep-frontend:latest | sudo k3s ctr images import -
-kubectl rollout restart -n interview-prep deploy/interview-prep-frontend
-
-cd backend && docker build -t interview-prep-api:latest .
-sudo docker save interview-prep-api:latest | sudo k3s ctr images import -
-kubectl rollout restart -n interview-prep deploy/interview-prep-api
-cd ..
-```
-
-### Database changes (new/edited problems)
-
-```bash
-# Edit src/data/problems.js, then re-seed
-kubectl port-forward -n mongodb svc/mongodb 27017:27017
-cd backend && MONGO_URI='mongodb://localhost:27017/interview-prep?authSource=admin' npm run seed
-```
-
-## Editing the problem set
-
-All problems live in `src/data/problems.js` — each entry has `id`, `title`,
-`category` (HLD or LLD), `difficulty`, `statement`, requirements, constraints
-and tags. Add, remove, or edit entries there. After editing, re-seed MongoDB.
+- **Frontend:** React 18, Vite, react-router-dom, lucide-react, marked
+- **Backend:** Express 4, Mongoose, OpenAI SDK
+- **AI:** DeepSeek API
+- **Databases:** MongoDB (conversations), Postgres (auth + discussion), Redis (real time chat and presence)
+- **Storage:** MinIO (diagrams)
+- **Hosting:** k3s with Traefik
 
 ## Project structure
 
 ```
 interview_prep/
-├── Dockerfile           # Frontend multi-stage build (Vite → nginx)
-├── nginx/
-│   └── default.conf     # Nginx config with SPA fallback + /api proxy
-├── k8s/
-│   ├── namespace.yaml
-│   ├── frontend-deployment.yaml
-│   ├── frontend-service.yaml
-│   ├── ingress.yaml
-│   ├── backend-deployment.yaml
-│   └── backend-service.yaml
-├── src/                 # React frontend
-│   ├── api/             # API clients (problems, chat, conversations)
-│   ├── components/      # ChatPanel, ChatMessage, DifficultyTag, etc.
-│   ├── pages/           # Home, Problem
-│   └── data/            # Static problem definitions (seed source)
-├── backend/
-│   ├── server.js        # Express entry point
-│   ├── models/          # Mongoose schemas (Problem, Conversation)
-│   ├── routes/          # problems, chat, conversations, evaluate
-│   ├── services/        # interviewer.js, evaluator.js (DeepSeek calls)
-│   ├── seed/            # Database seed script
-│   └── Dockerfile
-└── README.md
+├── src/          React frontend
+│   ├── api/      API clients
+│   ├── components/
+│   ├── pages/
+│   └── data/     Problem definitions (seed source)
+├── backend/      Express API
+│   ├── routes/
+│   ├── services/
+│   ├── models/
+│   └── seed/
+├── k8s/          Deployment manifests
+├── nginx/        Frontend proxy config
+└── Dockerfile
 ```
 
-## Stack
+## Getting started
 
-- **Frontend:** Vite + React 18, react-router-dom, lucide-react, marked
-- **Backend:** Express + Mongoose + OpenAI SDK
-- **AI:** DeepSeek API (OpenAI-compatible)
-- **Database:** MongoDB 8 on k3s
-- **Infrastructure:** k3s + Traefik ingress
+Prerequisites, environment setup, seeding the database, and running both
+servers locally are documented in [LocalDevelopment.md](LocalDevelopment.md).
+
+The project is designed to run in a k3s cluster behind Traefik. Local
+development runs the backend on port 4000 and the frontend on port 5173, with
+MongoDB, Postgres, and Redis reachable via port forwards. See
+[LocalDevelopment.md](LocalDevelopment.md) for the full setup, deployment, and
+re-deploying instructions.
+
+## License
+
+Private project. All rights reserved. No license file is included, and the
+packages are marked private, so the code is not licensed for reuse or
+redistribution.
