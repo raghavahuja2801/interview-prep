@@ -7,22 +7,42 @@ import { renderSvg, renderPng } from '../services/plantuml.js'
 import { storeDiagram } from '../services/minio.js'
 import crypto from 'crypto'
 import requireAuth from '../middleware/requireAuth.js'
+import { rateLimit } from '../services/redis.js'
 
 const router = Router()
 
 router.use(requireAuth)
 
-// Write a single SSE frame: `event: <name>\ndata: <json>\n\n`
-function sseWrite(res, event, data) {
-  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-}
+// Per-user chat rate limit (configurable via env, defaults below).
+// A fixed window of N chat requests per W seconds, keyed by user id so one
+// user hammering the LLM can't burn through the DeepSeek budget for everyone.
+const CHAT_RATE_LIMIT = Number(process.env.CHAT_RATE_LIMIT || 20)
+const CHAT_RATE_WINDOW_SECONDS = Number(process.env.CHAT_RATE_WINDOW_SECONDS || 600) // 10 min
 
-// POST /api/chat — send a message in an interview
 router.post('/', async (req, res) => {
+  // Enforce the per-user rate limit before doing any LLM work.
+  const limit = await rateLimit({
+    key: `chat:rl:${req.user.id}`,
+    limit: CHAT_RATE_LIMIT,
+    windowSeconds: CHAT_RATE_WINDOW_SECONDS,
+  })
+  if (!limit.allowed) {
+    res.set('Retry-After', String(limit.retryAfterSeconds))
+    return res.status(429).json({
+      error: 'Rate limit exceeded. Please wait before continuing your interview.',
+      retryAfterSeconds: limit.retryAfterSeconds,
+    })
+  }
+
   // Abort the upstream DeepSeek fetch if the client disconnects mid-stream.
   const controller = new AbortController()
   const onClose = () => controller.abort()
   req.on('close', onClose)
+
+// Write a single SSE frame: `event: <name>\ndata: <json>\n\n`
+function sseWrite(res, event, data) {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+}
 
   try {
     const { problemId, conversationId, message, history, event, diagram, audioEnabled } = req.body
