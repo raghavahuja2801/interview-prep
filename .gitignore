@@ -10,6 +10,9 @@ dist/
 !.env.example
 !.env.example
 
+# K8s manifests — real secret values (committed version is *.example.yaml)
+k8s/secrets.yaml
+
 # IDE / editor
 .vscode/
 .idea/

@@ -21,13 +21,22 @@ spec:
             - containerPort: 4000
           env:
             - name: MONGO_URI
-              value: "mongodb://admin:Raghav3214!@mongodb.mongodb.svc.cluster.local:27017/interview-prep?authSource=admin"
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-credentials
+                  key: uri
             - name: POSTGRES_URL
-              value: "postgres://interview_prep:change-me@postgres.postgres.svc.cluster.local:5432/interview_prep"
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: url
             - name: REDIS_URL
               value: "redis://redis.redis.svc.cluster.local:6379"
             - name: AUTH_ADMIN_KEY
-              value: "CopOJdxsQZbAP2WQt1jPsmBdMTCrWa9hXyZl6r1lLk4="
+              valueFrom:
+                secretKeyRef:
+                  name: auth-admin-key
+                  key: admin-key
             - name: DEEPSEEK_API_KEY
               valueFrom:
                 secretKeyRef:
