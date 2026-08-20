@@ -57,7 +57,7 @@ spec:
             - name: MINIO_ENDPOINT
               value: "minio.minio.svc:9000"
             - name: MINIO_ACCESS_KEY
-              value: "admin"
+              value: "7JRV2A/PcRuEEYm7tYat/6wEfjv1CJEye7uBm4bHGmQ="
             - name: MINIO_SECRET_KEY
               valueFrom:
                 secretKeyRef:
