@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import mongoose from 'mongoose'
 import Problem from '../models/Problem.js'
+import { cacheDel } from '../services/redis.js'
 import { problems } from '../../src/data/problems.js'
 
 const MONGO_URI =
@@ -27,6 +28,15 @@ async function seed() {
 
   const total = await Problem.countDocuments()
   console.log(`Done — ${inserted} new, ${updated} updated, ${total} total in DB`)
+
+  // Flush the cached problem lists so re-seeded data is visible immediately
+  // instead of waiting out the 2-day TTL.
+  await Promise.allSettled([
+    cacheDel('problems:list:all'),
+    cacheDel('problems:list:HLD'),
+    cacheDel('problems:list:LLD'),
+  ])
+  console.log('Problem cache flushed')
 
   await mongoose.disconnect()
 }
